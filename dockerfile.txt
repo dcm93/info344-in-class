@@ -1,0 +1,13 @@
+docker build -e ADDR=localhost:8080 name .
+
+
+docker build -t name .
+docker run -p 8080:80 name
+
+HOST=localhost PORT=8080 go install && prodserver
+
+export HOST=localhost
+export PORT=8080
+go install && prodserver
+
+

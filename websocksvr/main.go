@@ -5,6 +5,8 @@ import (
 	"log"
 	"net/http"
 	"time"
+
+	"github.com/gorilla/websocket"
 )
 
 //HandlerContext provides the HTTP handlers with
@@ -29,25 +31,42 @@ func (ctx *HandlerContext) TriggerEvent(w http.ResponseWriter, r *http.Request) 
 	w.Header().Add("Access-Control-Allow-Origin", "*")
 	w.Header().Add("Access-Control-Request-Method", "POST")
 	w.Header().Add("Access-Control-Request-Headers", "Content-Type")
-
 	//TODO: create a new MessageEvent with a hard-coded message
 	//and the current time for CreatedAt
+	message := &MessageEvent{
+		Message:   `Hello, World!`,
+		CreatedAt: time.Now(),
+	}
 	//Then pass the MessageEvent to the `.Notify()` method of your notifier
 	//so that the event gets broadcasted to all web socket clients
+	ctx.Notifier.Notify(message)
 }
 
 //WebSocketUpgradeHandler handles websocket upgrade requests
 func (ctx *HandlerContext) WebSocketUpgradeHandler(w http.ResponseWriter, r *http.Request) {
 	//TODO: upgrade this request to a web socket connection
 	//see https://godoc.org/github.com/gorilla/websocket#hdr-Overview
-	//NOTE that by default, the websocket package will reject
-	//cross-origin upgrade requests, so make sure you set the
-	//CheckOrigin field of the Upgrader to allow upgrades from
-	//any origin.
-	//See https://godoc.org/github.com/gorilla/websocket#hdr-Origin_Considerations
+
+	var upgrader = websocket.Upgrader{
+		//NOTE that by default, the websocket package will reject
+		//cross-origin upgrade requests, so make sure you set the
+		//CheckOrigin field of the Upgrader to allow upgrades from
+		//any origin.
+		//See https://godoc.org/github.com/gorilla/websocket#hdr-Origin_Considerations
+		CheckOrigin:     func(r *http.Request) bool { return true },
+		ReadBufferSize:  1024,
+		WriteBufferSize: 2014,
+	}
+
+	conn, err := upgrader.Upgrade(w, r, nil)
+	if err != nil {
+		log.Printf(`The client could not be upgraded. Please check error: %v`, err)
+		return
+	}
 
 	//after upgrading, use the `.AddClient()` method on your notifier
 	//to add the new client to your notifier's map of clients
+	go ctx.Notifier.AddClient(conn)
 
 }
 
@@ -60,6 +79,8 @@ func main() {
 
 	//TODO: start the notifier by calling
 	//its .Start() method on a new goroutine
+
+	ctx.Notifier.Start()
 
 	http.HandleFunc("/v1/ws", ctx.WebSocketUpgradeHandler)
 	http.HandleFunc("/v1/trigger", ctx.TriggerEvent)

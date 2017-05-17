@@ -1,6 +1,9 @@
 package main
 
 import (
+	"fmt"
+	"sync"
+
 	"github.com/gorilla/websocket"
 )
 
@@ -14,13 +17,19 @@ type Notifier struct {
 	//remember that go maps ARE NOT safe for
 	//concurrent access, so you must do something
 	//to protect the `clients` map
+	mu sync.RWMutex
 }
 
 //NewNotifier constructs a new Notifer.
 func NewNotifier() *Notifier {
 	//TODO: create, initialize and return
 	//a Notifier struct
-	return nil
+	notifier := &Notifier{
+		eventq:  make(chan interface{}),
+		clients: make(map[*websocket.Conn]bool),
+		mu:      sync.RWMutex{},
+	}
+	return notifier
 }
 
 //Start begins a loop that checks for new events
@@ -28,10 +37,22 @@ func NewNotifier() *Notifier {
 //This function should be called on a new goroutine
 //e.g., `go mynotifer.Start()`
 func (n *Notifier) Start() {
-	//TODO: implement this function
-	//this should check for new events written
-	//to the `eventq` channel, and broadcast
-	//them to all of the web socket clients
+	for {
+		//TODO: implement this function
+		//this should check for new events written
+		//to the `eventq` channel, and broadcast
+		//them to all of the web socket clients
+		select {
+		case event, ok := <-n.eventq:
+			if ok {
+				n.broadcast(event)
+			} else {
+				fmt.Println("Channel closed!")
+			}
+		default:
+			fmt.Println("No value ready, moving on.")
+		}
+	}
 }
 
 //AddClient adds a new web socket client to the Notifer
@@ -42,11 +63,21 @@ func (n *Notifier) AddClient(client *websocket.Conn) {
 	//processed on its own goroutine, so your
 	//implementation here MUST be safe for concurrent use
 
+	//after you add the client to the map
+	// call n.readPump() on its own go routine
+	// to process all of the control messages sent
+	// by the client to the server
+	n.mu.Lock()
+	defer n.mu.Unlock()
+	n.clients[client] = true
+	go n.readPump(client)
 }
 
 //Notify will add a new event to the event queue
 func (n *Notifier) Notify(event interface{}) {
 	//TODO: add the `event` to the `eventq`
+	// there's probably something else to this
+	n.eventq <- event
 }
 
 //readPump will read all messages (including control messages)
@@ -55,6 +86,7 @@ func (n *Notifier) Notify(event interface{}) {
 //websocket will get stuck and start producing errors.
 //see https://godoc.org/github.com/gorilla/websocket#hdr-Control_Messages
 func (n *Notifier) readPump(client *websocket.Conn) {
+	
 	//TODO: implement this according to the notes in the
 	//Control Message section of the Gorilla Web Socket docs:
 	//https://godoc.org/github.com/gorilla/websocket#hdr-Control_Messages
